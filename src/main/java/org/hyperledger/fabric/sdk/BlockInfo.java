@@ -40,10 +40,14 @@ import static java.lang.String.format;
 public class BlockInfo {
     private final BlockDeserializer block; //can be only one or the other.
     private final EventsPackage.FilteredBlock filteredBlock;
+    private final EventsPackage.BlockAndPrivateData blockAndPrivateData;
+    private final BlockDeserializer blockWithPrivateData; // applicable only when blockAndPrivateData
 
     BlockInfo(Block block) {
 
         filteredBlock = null;
+        blockAndPrivateData = null;
+        blockWithPrivateData = null;
         this.block = new BlockDeserializer(block);
     }
 
@@ -54,6 +58,8 @@ public class BlockInfo {
         if (type == EventsPackage.DeliverResponse.TypeCase.BLOCK) {
             final Block respBlock = resp.getBlock();
             filteredBlock = null;
+            blockAndPrivateData = null;
+            blockWithPrivateData = null;
             if (respBlock == null) {
                 throw new AssertionError("DeliverResponse type block but block is null");
             }
@@ -61,24 +67,52 @@ public class BlockInfo {
         } else if (type == EventsPackage.DeliverResponse.TypeCase.FILTERED_BLOCK) {
             filteredBlock = resp.getFilteredBlock();
             block = null;
+            blockAndPrivateData = null;
+            blockWithPrivateData = null;
             if (filteredBlock == null) {
                 throw new AssertionError("DeliverResponse type filter block but filter block is null");
             }
 
+        } else if (type == EventsPackage.DeliverResponse.TypeCase.BLOCK_AND_PRIVATE_DATA) {
+            blockAndPrivateData = resp.getBlockAndPrivateData();
+            blockWithPrivateData = new BlockDeserializer(blockAndPrivateData.getBlock());
+            block = null;
+            filteredBlock = null;
+            if (blockAndPrivateData == null || blockWithPrivateData == null) {
+                throw new AssertionError("DeliverResponse type block and private data is null");
+            }
         } else {
             throw new AssertionError(format("DeliverResponse type has unexpected type: %s, %d", type.name(), type.getNumber()));
         }
 
     }
 
-    public boolean isFiltered() {
-        if (filteredBlock == null && block == null) {
-            throw new AssertionError("Both block and filter is null.");
+    private void checkOneSetOrError() {
+        if (filteredBlock == null && block == null && blockAndPrivateData == null) {
+            throw new AssertionError("Block, filter and private data are all null.");
         }
         if (filteredBlock != null && block != null) {
             throw new AssertionError("Both block and filter are set.");
         }
+        if (filteredBlock != null && blockAndPrivateData != null) {
+            throw new AssertionError("Both private data block and filter are set.");
+        }
+        if (blockAndPrivateData != null && block != null) {
+            throw new AssertionError("Both block and private data are set");
+        }
+        if (blockAndPrivateData != null && blockWithPrivateData == null) {
+            throw new AssertionError("Block with private data does not have sufficient block data");
+        }
+    }
+
+    public boolean isFiltered() {
+        checkOneSetOrError();
         return filteredBlock != null;
+    }
+
+    public boolean isBlockAndPrivate() {
+        checkOneSetOrError();
+        return blockAndPrivateData != null;
     }
 
     public String getChannelId() throws InvalidProtocolBufferException {
@@ -89,7 +123,7 @@ public class BlockInfo {
      * @return the raw {@link Block}
      */
     public Block getBlock() {
-        return isFiltered() ? null : block.getBlock();
+        return isFiltered() || isBlockAndPrivate() ? null : block.getBlock();
     }
 
     /**
@@ -100,31 +134,46 @@ public class BlockInfo {
     }
 
     /**
+     * @return the raw {@link org.hyperledger.fabric.protos.peer.EventsPackage.BlockAndPrivateData}
+     */
+    public EventsPackage.BlockAndPrivateData getBlockAndPrivateData() {
+        return !isBlockAndPrivate() ? null : blockAndPrivateData;
+    }
+
+    /**
      * @return the {@link Block} previousHash value and null if filtered block.
      */
     public byte[] getPreviousHash() {
-        return isFiltered() ? null : block.getPreviousHash().toByteArray();
+        return isFiltered() ? null :
+                isBlockAndPrivate() ? blockWithPrivateData.getPreviousHash().toByteArray() :
+                        block.getPreviousHash().toByteArray();
     }
 
     /**
      * @return the {@link Block} data hash value and null if filtered block.
      */
     public byte[] getDataHash() {
-        return isFiltered() ? null : block.getDataHash().toByteArray();
+        return isFiltered() ? null :
+                isBlockAndPrivate() ? blockWithPrivateData.getDataHash().toByteArray() :
+                        block.getDataHash().toByteArray();
     }
 
     /**
      * @return the {@link Block} transaction metadata value return null if filtered block.
      */
     public byte[] getTransActionsMetaData() {
-        return isFiltered() ? null : block.getTransActionsMetaData();
+        return isFiltered() ? null :
+                isBlockAndPrivate() ? blockWithPrivateData.getTransActionsMetaData() :
+                        block.getTransActionsMetaData();
     }
 
     /**
      * @return the {@link Block} index number
      */
     public long getBlockNumber() {
-        return isFiltered() ? filteredBlock.getNumber() : block.getNumber();
+        return isFiltered() ? filteredBlock.getNumber() :
+                isBlockAndPrivate() ? blockWithPrivateData.getNumber() :
+                        block.getNumber();
     }
 
     /**
@@ -133,7 +182,9 @@ public class BlockInfo {
      * @return the number of transactions in this block.
      */
     public int getEnvelopeCount() {
-        return isFiltered() ? filteredBlock.getFilteredTransactionsCount() : block.getData().getDataCount();
+        return isFiltered() ? filteredBlock.getFilteredTransactionsCount() :
+                isBlockAndPrivate() ? blockWithPrivateData.getData().getDataCount() :
+                        block.getData().getDataCount();
     }
 
     private int transactionCount = -1;
@@ -350,7 +401,11 @@ public class BlockInfo {
                         break;
                 }
             } else {
-                EnvelopeDeserializer ed = EnvelopeDeserializer.newInstance(block.getBlock().getData().getData(envelopeIndex), block.getTransActionsMetaData()[envelopeIndex]);
+                BlockDeserializer bd = this.block;
+                if (isBlockAndPrivate()) {
+                    bd = this.blockWithPrivateData;
+                }
+                EnvelopeDeserializer ed = EnvelopeDeserializer.newInstance(bd.getBlock().getData().getData(envelopeIndex), bd.getTransActionsMetaData()[envelopeIndex]);
                 switch (ed.getType()) {
                     case Common.HeaderType.ENDORSER_TRANSACTION_VALUE:
                         ret = new TransactionEnvelopeInfo((EndorserTransactionEnvDeserializer) ed);
