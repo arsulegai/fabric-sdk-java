@@ -507,11 +507,11 @@ public class PrivateDataIT {
      * Instead of the default of starting the eventing peer to retrieve the newest block it sets it
      * retrieve starting from the start parameter.
      *
-     * @param client
-     * @param replayTestChannel
-     * @param start
-     * @param stop
-     * @throws InvalidArgumentException
+     * @param client hlf client that con connect to the Fabric network
+     * @param replayTestChannel channel object to subscribe and replay events
+     * @param start index from where block events are to be read
+     * @param stop index upto where the block events are to be read
+     * @throws InvalidArgumentException in case of an error.
      */
     private void testPeerServiceEventingReplay(HFClient client, Channel replayTestChannel, final long start, final long stop, Set<String> collections) throws InvalidArgumentException {
 
@@ -535,6 +535,7 @@ public class PrivateDataIT {
 
         assertNotNull(client.getChannel(replayTestChannel.getName())); // should be known by client.
 
+        // Register for receiving blocks with the private data
         final Channel.PeerOptions eventingPeerOptions = createPeerOptions().setPeerRoles(EnumSet.of(Peer.PeerRole.EVENT_SOURCE));
         eventingPeerOptions.registerEventsForPrivateData();
 
@@ -563,9 +564,8 @@ public class PrivateDataIT {
                 BlockEvent seen = blockEvents.put(blockNumber, blockEvent);
                 assertNull(format("Block number %d seen twice", blockNumber), seen);
 
-                assertTrue(format("Wrong type of block seen block number %d. expected block with private data %b but got %s",
-                                blockNumber, blockEvent.isBlockAndPrivate(), blockEvent.isFiltered() ? "filtered" : "block"),
-                        blockEvent.isBlockAndPrivate());
+                assertTrue(format("Wrong type of block seen block number %d. expected block with private data but got %s",
+                                blockNumber, blockEvent.isFiltered() ? "filtered" : "block"), blockEvent.isBlockAndPrivate());
                 final long count = bcount.getAndIncrement(); //count starts with 0 not 1 !
 
                 if (count == 0 && stop == -1L) {
@@ -605,8 +605,7 @@ public class PrivateDataIT {
                 assertNotNull(format("Missing block event for block number %d. Start= %d", i, start), blockEvent);
             }
 
-            //light weight test just see if we get reasonable values for traversing the block. Test just whats common between
-            // Block and FilteredBlock.
+            // lightweight test just see if we get reasonable values for traversing the block.
 
             int transactionEventCounts = 0;
             int chaincodeEventsCounts = 0;
