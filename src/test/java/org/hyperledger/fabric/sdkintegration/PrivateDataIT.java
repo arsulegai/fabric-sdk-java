@@ -615,9 +615,10 @@ public class PrivateDataIT {
                 final BlockEvent blockEvent = blockEvents.get(i);
                 assertTrue(blockEvent.isBlockAndPrivate()); // check again
 
-                assertNull(blockEvent.getBlock()); // should not have block event.
+                assertNotNull(blockEvent.getBlock()); // should have block.
                 assertNull(blockEvent.getFilteredBlock()); // should not have filtered block.
                 assertNotNull(blockEvent.getBlockAndPrivateData()); // should have block and private data.
+                assertNotNull(blockEvent.getBlockAndPrivateData().getPrivateDataMapMap()); // should have private data
 
                 assertEquals(replayTestChannel.getName(), blockEvent.getChannelId());
 
