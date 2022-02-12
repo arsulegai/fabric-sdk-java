@@ -35,6 +35,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.hyperledger.fabric.protos.ledger.rwset.Rwset;
 import org.hyperledger.fabric.sdk.BlockEvent;
 import org.hyperledger.fabric.sdk.BlockInfo;
 import org.hyperledger.fabric.sdk.BlockchainInfo;
@@ -214,17 +215,17 @@ public class PrivateDataIT {
 
             Channel replayChannel = client.deSerializeChannel(replayChannelBytes);
             out("doing testPeerServiceEventingReplay,0,-1");
-            testPeerServiceEventingReplay(client, replayChannel, 0L, -1L);
+            testPeerServiceEventingReplay(client, replayChannel, 0L, -1L, expect);
 
             //Now do it again starting at block 1
             replayChannel = client.deSerializeChannel(replayChannelBytes);
             out("doing testPeerServiceEventingReplay,1,-1");
-            testPeerServiceEventingReplay(client, replayChannel, 1L, -1L);
+            testPeerServiceEventingReplay(client, replayChannel, 1L, -1L, expect);
 
             //Now do it again starting at block 2 to 3
             replayChannel = client.deSerializeChannel(replayChannelBytes);
             out("doing testPeerServiceEventingReplay,2,3");
-            testPeerServiceEventingReplay(client, replayChannel, 2L, 3L);
+            testPeerServiceEventingReplay(client, replayChannel, 2L, 3L, expect);
         }
 
         out("That's all folks!");
@@ -512,7 +513,7 @@ public class PrivateDataIT {
      * @param stop
      * @throws InvalidArgumentException
      */
-    private void testPeerServiceEventingReplay(HFClient client, Channel replayTestChannel, final long start, final long stop) throws InvalidArgumentException {
+    private void testPeerServiceEventingReplay(HFClient client, Channel replayTestChannel, final long start, final long stop, HashSet<String> collections) throws InvalidArgumentException {
 
         assertFalse(replayTestChannel.isInitialized()); //not yet initialized
         assertFalse(replayTestChannel.isShutdown()); // not yet shutdown.
@@ -618,7 +619,19 @@ public class PrivateDataIT {
                 assertNotNull(blockEvent.getBlock()); // should have block.
                 assertNull(blockEvent.getFilteredBlock()); // should not have filtered block.
                 assertNotNull(blockEvent.getBlockAndPrivateData()); // should have block and private data.
-                assertNotNull(blockEvent.getBlockAndPrivateData().getPrivateDataMapMap()); // should have private data
+                Map<Long, Rwset.TxPvtReadWriteSet> privateDataMap = blockEvent.getBlockAndPrivateData().getPrivateDataMapMap();
+                assertNotNull(privateDataMap); // should have private data
+
+                // get all the collections from the privateDataMap
+                // collection should be set already
+                for (Map.Entry<Long, Rwset.TxPvtReadWriteSet> privateData : privateDataMap.entrySet()) {
+                    Rwset.TxPvtReadWriteSet pvtReadWriteSet = privateData.getValue();
+                    for (Rwset.NsPvtReadWriteSet nsPvtReadWriteSet : pvtReadWriteSet.getNsPvtRwsetList()) {
+                        for (Rwset.CollectionPvtReadWriteSet pvtReadWriteSet1 : nsPvtReadWriteSet.getCollectionPvtRwsetList()) {
+                            assertTrue(collections.contains(pvtReadWriteSet1.getCollectionName()));
+                        }
+                    }
+                }
 
                 assertEquals(replayTestChannel.getName(), blockEvent.getChannelId());
 
