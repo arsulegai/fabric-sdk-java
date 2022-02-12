@@ -513,7 +513,7 @@ public class PrivateDataIT {
      * @param stop
      * @throws InvalidArgumentException
      */
-    private void testPeerServiceEventingReplay(HFClient client, Channel replayTestChannel, final long start, final long stop, HashSet<String> collections) throws InvalidArgumentException {
+    private void testPeerServiceEventingReplay(HFClient client, Channel replayTestChannel, final long start, final long stop, Set<String> collections) throws InvalidArgumentException {
 
         assertFalse(replayTestChannel.isInitialized()); //not yet initialized
         assertFalse(replayTestChannel.isShutdown()); // not yet shutdown.
